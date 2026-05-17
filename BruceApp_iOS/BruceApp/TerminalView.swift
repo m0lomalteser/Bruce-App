@@ -437,10 +437,10 @@ struct QuickActionsView: View {
         CategoryItem(name: "Bluetooth", icon: "badge.plus.radiowaves.forward", actions: [
             ActionItem(title: "Device Scan", subtitle: "Scan for BLE advertisements", icon: "antenna.radiowaves.left.and.right", command: "BLE_SCAN"),
             ActionItem(title: "Stop Advertising", subtitle: "Halt active broadcasts", icon: "stop.circle", command: "BLE_STOP"),
-            ActionItem(title: "Status Check", subtitle: "BLESPAM", icon: "bolt.fill", command: "BLESPAM_APPLE_CONTINUITY"),
-            ActionItem(title: "Status Check", subtitle: "BLESPAM", icon: "bolt.fill", command: "BLESPAM_SAMSUNG"),
-            ActionItem(title: "Status Check", subtitle: "BLESPAM", icon: "bolt.fill", command: "BLESPAM_ANDROID"),
-            ActionItem(title: "Status Check", subtitle: "BLESPAM", icon: "bolt.fill", command: "BLESPAM_WINDOWS")
+            ActionItem(title: "Apple", subtitle: "BLESPAM", icon: "bolt.fill", command: "BLESPAM_APPLE_CONTINUITY"),
+            ActionItem(title: "Samsung", subtitle: "BLESPAM", icon: "bolt.fill", command: "BLESPAM_SAMSUNG"),
+            ActionItem(title: "Android", subtitle: "BLESPAM", icon: "bolt.fill", command: "BLESPAM_ANDROID"),
+            ActionItem(title: "Windows", subtitle: "BLESPAM", icon: "bolt.fill", command: "BLESPAM_WINDOWS")
         ]),
         CategoryItem(name: "IR (Infrared)", icon: "eye.fill", actions: [
             ActionItem(title: "Record Signal", subtitle: "Listen for incoming IR codes", icon: "record.circle", command: "IR_REC"),
