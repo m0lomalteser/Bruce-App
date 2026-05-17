@@ -455,7 +455,7 @@ struct QuickActionsView: View {
         ]),
         CategoryItem(name: "RFID", icon: "creditcard.and.123", actions: [
             ActionItem(title: "Read Card", subtitle: "Scan high/low frequency tags", icon: "sensor.tag.radiowaves.forward", command: "RFID_READ"),
-            ActionItem(title: "Emulate Tag", subtitle: "Broadcast saved UID", icon: "broadcast", command: "RFID_EMU")
+            ActionItem(title: "Emulate Tag", subtitle: "Broadcast saved UID", icon: "wave.3.up", command: "RFID_EMU")
         ])
     ]
     
@@ -502,11 +502,8 @@ struct QuickActionsView: View {
     
     // 3. Command Dispatch Logic
     private func sendDeviceCommand(_ command: String) {
-        // Formats the string into raw data (adding a newline characteristic if required by your firmware parser)
-        guard let data = "\(command)\n".data(using: .utf8) else { return }
-        
-        // This relies on your existing BruceBLEManager implementation to write data to the TX characteristic
-        // Example logic: bleManager.writeToCharacteristic(data: data)
+        // Falls deine Firmware das \n braucht, hänge es an, ansonsten nutze direkt deine Funktion
+        bleManager.sendCommand(command)
         print("Sending command to Bruce: \(command)")
     }
 }
