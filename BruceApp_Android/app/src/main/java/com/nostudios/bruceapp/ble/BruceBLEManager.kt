@@ -39,6 +39,7 @@ enum class ConnectionState {
 
 private const val TAG = "BruceBLE"
 
+// Die globalen UUID-Objekte für den direkten Typ-Vergleich
 private val BRUCE_SERVICE_UUID: UUID = UUID.fromString("B1234567-89AB-CDEF-0123-456789ABCDEF")
 private val AUTH_CHAR_UUID: UUID = UUID.fromString("A1234567-89AB-CDEF-0123-456789ABCDEF")
 private val HW_INFO_CHAR_UUID: UUID = UUID.fromString("C1234567-89AB-CDEF-0123-456789ABCDEF")
@@ -108,22 +109,20 @@ class BruceBLEManager(private val context: Context) {
     private fun writeCharacteristic(gatt: BluetoothGatt, char: BluetoothGattCharacteristic, data: ByteArray, writeType: Int): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             try {
-                val result = gatt.writeCharacteristic(char, data, writeType)
-                if (result is Int) result == 0 else result as? Boolean ?: false
+                char.writeType = writeType
+                gatt.writeCharacteristic(char, data, writeType) == 0
             } catch (e: Exception) {
-                Log.e(TAG, "Fehler beim Schreiben der Charakteristik (API 33+): ${e.message}")
+                Log.e(TAG, "Fehler writeCharacteristic (API 33+): ${e.message}")
                 false
             }
         } else {
             @Suppress("DEPRECATION")
             try {
                 char.value = data
-                @Suppress("DEPRECATION")
                 char.writeType = writeType
-                @Suppress("DEPRECATION")
                 gatt.writeCharacteristic(char)
             } catch (e: Exception) {
-                Log.e(TAG, "Fehler beim Schreiben der Charakteristik (Legacy): ${e.message}")
+                Log.e(TAG, "Fehler writeCharacteristic (Legacy): ${e.message}")
                 false
             }
         }
@@ -147,15 +146,13 @@ class BruceBLEManager(private val context: Context) {
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
-                    Log.d(TAG, "Verbunden mit ${gatt.device.address}. Fordere MTU 512 an...")
+                    Log.d(TAG, "GATT verbunden. Fordere MTU 512 an...")
                     _connectedPeripherals[gatt.device.address] = gatt
-                    if (activePeripheral == null) activePeripheral = gatt
-                    
-                    // FIX: Fordere die 512er MTU an, bevor Services gescannt werden
+                    activePeripheral = gatt
                     gatt.requestMtu(512)
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
-                    Log.d(TAG, "Verbindung getrennt: ${gatt.device.address}")
+                    Log.d(TAG, "GATT getrennt.")
                     _connectedPeripherals.remove(gatt.device.address)
                     if (gatt.device.address == activePeripheral?.device?.address) {
                         scope.launch(Dispatchers.Main) {
@@ -172,34 +169,28 @@ class BruceBLEManager(private val context: Context) {
         }
 
         override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
-            if (status == BluetoothGatt.GATT_SUCCESS) {
-                Log.d(TAG, "MTU erfolgreich auf $mtu Bytes geändert. Starte Service-Discovery...")
-                gatt.discoverServices()
-            } else {
-                Log.e(TAG, "MTU-Aushandlung fehlgeschlagen. Starte trotzdem Service-Discovery...")
-                gatt.discoverServices()
-            }
+            Log.d(TAG, "MTU geändert auf: $mtu, Status: $status. Starte Service-Discovery...")
+            gatt.discoverServices()
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-            Log.d(TAG, "Services entdeckt für: ${gatt.device.address}")
             val service = gatt.getService(BRUCE_SERVICE_UUID) ?: return
             for (char in service.characteristics) {
-                val uuidStr = char.uuid.toString().uppercase()
-                when (uuidStr) {
-                    AUTH_CHAR_UUID.toString().uppercase() -> {
+                // FIX: Sicherer Direktvergleich über UUID-Objekte statt Strings
+                when (char.uuid) {
+                    AUTH_CHAR_UUID -> {
                         authCharacteristic = char
                         gatt.setCharacteristicNotification(char, true)
                         gatt.readCharacteristic(char)
                     }
-                    HW_INFO_CHAR_UUID.toString().uppercase() -> gatt.readCharacteristic(char)
-                    TERM_TX_CHAR_UUID.toString().uppercase() -> txCharacteristic = char
-                    BATTERY_CHAR_UUID.toString().uppercase() -> {
+                    HW_INFO_CHAR_UUID -> gatt.readCharacteristic(char)
+                    TERM_TX_CHAR_UUID -> txCharacteristic = char
+                    BATTERY_CHAR_UUID -> {
                         gatt.setCharacteristicNotification(char, true)
                         gatt.readCharacteristic(char)
                     }
-                    TERM_RX_CHAR_UUID.toString().uppercase() -> gatt.setCharacteristicNotification(char, true)
-                    SCREEN_BLE_CHAR_UUID.toString().uppercase() -> gatt.setCharacteristicNotification(char, true)
+                    TERM_RX_CHAR_UUID -> gatt.setCharacteristicNotification(char, true)
+                    SCREEN_BLE_CHAR_UUID -> gatt.setCharacteristicNotification(char, true)
                 }
             }
         }
@@ -226,13 +217,12 @@ class BruceBLEManager(private val context: Context) {
     }
 
     private fun handleCharacteristicValue(gatt: BluetoothGatt, char: BluetoothGattCharacteristic, data: ByteArray) {
-        val uuid = char.uuid.toString().uppercase()
-        when {
-            uuid == AUTH_CHAR_UUID.toString().uppercase() -> {
+        // FIX: Typenabgleich direkt über das native UUID-Objekt
+        when (char.uuid) {
+            AUTH_CHAR_UUID -> {
                 val statusString = String(data).trim()
-                Log.d(TAG, "Authentifizierungs-Status empfangen: $statusString")
+                Log.d(TAG, "AUTH RX: $statusString")
                 
-                // FIX: Garantiert auf dem Main-Thread ausführen gegen den Freeze-Zustand
                 scope.launch(Dispatchers.Main) {
                     when (statusString) {
                         "LOCKED", "AUTH_REQUIRED" -> {
@@ -245,7 +235,7 @@ class BruceBLEManager(private val context: Context) {
                         }
                         "SUCCESS", "UNLOCKED" -> {
                             _connectionState.value = ConnectionState.Paired
-                            Log.d(TAG, "Erfolgreich gepaart und verifiziert!")
+                            Log.d(TAG, "Erfolgreich autorisiert (Paired)!")
                         }
                         "WRONG_PIN", "FAILED" -> {
                             _connectionState.value = ConnectionState.NeedsPin
@@ -253,7 +243,7 @@ class BruceBLEManager(private val context: Context) {
                     }
                 }
             }
-            uuid == TERM_RX_CHAR_UUID.toString().uppercase() -> {
+            TERM_RX_CHAR_UUID -> {
                 val packetString = String(data)
                 val lines = packetString.split("\n")
                 for (line in lines) {
@@ -311,7 +301,7 @@ class BruceBLEManager(private val context: Context) {
                                     file.writeBytes(finalData)
                                     _lastDownloadedFilePath.value = file.absolutePath
                                 } catch (e: Exception) {
-                                    Log.e(TAG, "Fehler beim Speichern der Download-Datei: ${e.message}")
+                                    Log.e(TAG, "Download Save Error: ${e.message}")
                                 } finally {
                                     _isDownloading.value = false
                                 }
@@ -327,7 +317,7 @@ class BruceBLEManager(private val context: Context) {
                     }
                 }
             }
-            uuid == SCREEN_BLE_CHAR_UUID.toString().uppercase() -> {
+            SCREEN_BLE_CHAR_UUID -> {
                 scope.launch(Dispatchers.Main) {
                     val current = _rawScreenData.value.toMutableList()
                     current.addAll(data.toList())
@@ -338,11 +328,11 @@ class BruceBLEManager(private val context: Context) {
                     }
                 }
             }
-            uuid == HW_INFO_CHAR_UUID.toString().uppercase() -> {
+            HW_INFO_CHAR_UUID -> {
                 val name = String(data).trim()
                 scope.launch(Dispatchers.Main) { _hardwareName.value = name }
             }
-            uuid == BATTERY_CHAR_UUID.toString().uppercase() -> {
+            BATTERY_CHAR_UUID -> {
                 if (data.isNotEmpty()) {
                     scope.launch(Dispatchers.Main) { _batteryLevel.value = data[0].toInt() and 0xFF }
                 }
@@ -350,13 +340,12 @@ class BruceBLEManager(private val context: Context) {
         }
     }
 
+    // (Die restlichen Steuerungsfunktionen bleiben identisch und thread-sicher)
     fun startExplicitScan() {
         _discoveredDevices.value = emptyList()
         isSearchingForNewDevices = true
         _connectionState.value = ConnectionState.Scanning
-        val scanFilters = listOf(
-            ScanFilter.Builder().setServiceUuid(ParcelUuid(BRUCE_SERVICE_UUID)).build()
-        )
+        val scanFilters = listOf(ScanFilter.Builder().setServiceUuid(ParcelUuid(BRUCE_SERVICE_UUID)).build())
         val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
         bluetoothLeScanner?.startScan(scanFilters, settings, scanCallback)
     }
@@ -412,7 +401,8 @@ class BruceBLEManager(private val context: Context) {
     fun submitPin(pin: String) {
         val gatt = activePeripheral ?: return
         val char = authCharacteristic ?: return
-        _connectionState.value = ConnectionState.Authenticating
+        scope.launch(Dispatchers.Main) { _connectionState.value = ConnectionState.Authenticating }
+        // FIX: Einige Android Stacks verlangen WRITE_TYPE_DEFAULT für exaktes Handshaking
         writeCharacteristic(gatt, char, pin.toByteArray(), BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
     }
 
