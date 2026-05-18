@@ -1,0 +1,22 @@
+R_DEF: Internal format may change without notice
+local
+color background
+color black
+color card_dark
+color white
+drawable bruce
+drawable lilygo_t_deck
+drawable lilygo_t_embed
+drawable lilygo_t_embed_cc1101
+drawable lilygo_t_lora_pager
+drawable m5stack_cardputer
+drawable m5stack_core
+drawable m5stack_core2
+drawable m5stack_cplus2
+drawable m5stick_sticks3
+drawable unknown_device
+font doto
+font spacegrotesk
+mipmap ic_launcher
+string app_name
+style Theme.BruceApp

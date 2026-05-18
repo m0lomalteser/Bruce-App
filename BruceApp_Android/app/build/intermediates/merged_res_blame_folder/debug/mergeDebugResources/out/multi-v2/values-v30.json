@@ -1,0 +1,19 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.nostudios.bruceapp-mergeDebugResources-59:/values-v30/values-v30.xml",
+            "map": [
+                {
+                    "source": "/Users/marlin/.gradle/caches/8.9/transforms/cd53d2a6992b36684cc99b1fa29e0b68/transformed/material3-release/res/values-v30/values-v30.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "72",
+                        "endOffsets": "123"
+                    }
+                }
+            ]
+        }
+    ]
+}

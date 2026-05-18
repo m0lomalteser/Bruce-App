@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="background">#FF141415</color>
+    <color name="black">#FF000000</color>
+    <color name="card_dark">#FF1F1F1F</color>
+    <color name="white">#FFFFFFFF</color>
+    <string name="app_name">BruceApp</string>
+    <style name="Theme.BruceApp" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">#FF141415</item>
+        <item name="android:navigationBarColor">#FF141415</item>
+        <item name="android:windowBackground">#FF141415</item>
+    </style>
+</resources>

@@ -1,0 +1,62 @@
+[
+    {
+        "merged": "com.nostudios.bruceapp-debug-61:/font_doto.ttf.flat",
+        "source": "com.nostudios.bruceapp-main-63:/font/doto.ttf"
+    },
+    {
+        "merged": "com.nostudios.bruceapp-debug-61:/drawable_m5stack_core2.xml.flat",
+        "source": "com.nostudios.bruceapp-main-63:/drawable/m5stack_core2.xml"
+    },
+    {
+        "merged": "com.nostudios.bruceapp-debug-61:/drawable_unknown_device.xml.flat",
+        "source": "com.nostudios.bruceapp-main-63:/drawable/unknown_device.xml"
+    },
+    {
+        "merged": "com.nostudios.bruceapp-debug-61:/mipmap-hdpi_ic_launcher.xml.flat",
+        "source": "com.nostudios.bruceapp-main-63:/mipmap-hdpi/ic_launcher.xml"
+    },
+    {
+        "merged": "com.nostudios.bruceapp-debug-61:/drawable_m5stack_core.xml.flat",
+        "source": "com.nostudios.bruceapp-main-63:/drawable/m5stack_core.xml"
+    },
+    {
+        "merged": "com.nostudios.bruceapp-debug-61:/font_spacegrotesk.ttf.flat",
+        "source": "com.nostudios.bruceapp-main-63:/font/spacegrotesk.ttf"
+    },
+    {
+        "merged": "com.nostudios.bruceapp-debug-61:/drawable_lilygo_t_embed_cc1101.xml.flat",
+        "source": "com.nostudios.bruceapp-main-63:/drawable/lilygo_t_embed_cc1101.xml"
+    },
+    {
+        "merged": "com.nostudios.bruceapp-debug-61:/drawable_m5stack_cplus2.xml.flat",
+        "source": "com.nostudios.bruceapp-main-63:/drawable/m5stack_cplus2.xml"
+    },
+    {
+        "merged": "com.nostudios.bruceapp-debug-61:/drawable_lilygo_t_deck.xml.flat",
+        "source": "com.nostudios.bruceapp-main-63:/drawable/lilygo_t_deck.xml"
+    },
+    {
+        "merged": "com.nostudios.bruceapp-debug-61:/drawable_lilygo_t_embed.xml.flat",
+        "source": "com.nostudios.bruceapp-main-63:/drawable/lilygo_t_embed.xml"
+    },
+    {
+        "merged": "com.nostudios.bruceapp-debug-61:/drawable_m5stack_cardputer.xml.flat",
+        "source": "com.nostudios.bruceapp-main-63:/drawable/m5stack_cardputer.xml"
+    },
+    {
+        "merged": "com.nostudios.bruceapp-debug-61:/drawable_bruce.xml.flat",
+        "source": "com.nostudios.bruceapp-main-63:/drawable/bruce.xml"
+    },
+    {
+        "merged": "com.nostudios.bruceapp-debug-61:/drawable_lilygo_t_lora_pager.xml.flat",
+        "source": "com.nostudios.bruceapp-main-63:/drawable/lilygo_t_lora_pager.xml"
+    },
+    {
+        "merged": "com.nostudios.bruceapp-debug-61:/drawable_m5stick_sticks3.xml.flat",
+        "source": "com.nostudios.bruceapp-main-63:/drawable/m5stick_sticks3.xml"
+    },
+    {
+        "merged": "com.nostudios.bruceapp-debug-61:/mipmap-anydpi-v26_ic_launcher.xml.flat",
+        "source": "com.nostudios.bruceapp-main-63:/mipmap-anydpi-v26/ic_launcher.xml"
+    }
+]
