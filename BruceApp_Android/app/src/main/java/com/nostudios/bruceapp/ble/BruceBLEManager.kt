@@ -39,7 +39,7 @@ enum class ConnectionState {
 
 private const val TAG = "BruceBLE"
 
-// Die globalen UUID-Objekte für den direkten Typ-Vergleich
+// Native UUID Objekte für den sicheren Direktvergleich im Stack
 private val BRUCE_SERVICE_UUID: UUID = UUID.fromString("B1234567-89AB-CDEF-0123-456789ABCDEF")
 private val AUTH_CHAR_UUID: UUID = UUID.fromString("A1234567-89AB-CDEF-0123-456789ABCDEF")
 private val HW_INFO_CHAR_UUID: UUID = UUID.fromString("C1234567-89AB-CDEF-0123-456789ABCDEF")
@@ -169,28 +169,42 @@ class BruceBLEManager(private val context: Context) {
         }
 
         override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
-            Log.d(TAG, "MTU geändert auf: $mtu, Status: $status. Starte Service-Discovery...")
+            Log.d(TAG, "MTU geändert auf: $mtu. Starte Service-Discovery...")
             gatt.discoverServices()
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             val service = gatt.getService(BRUCE_SERVICE_UUID) ?: return
-            for (char in service.characteristics) {
-                // FIX: Sicherer Direktvergleich über UUID-Objekte statt Strings
-                when (char.uuid) {
-                    AUTH_CHAR_UUID -> {
-                        authCharacteristic = char
-                        gatt.setCharacteristicNotification(char, true)
-                        gatt.readCharacteristic(char)
+            
+            // FIX: Sequenziertes Laden mit minimalem Delay gegen GATT-Thread-Sperren
+            scope.launch(Dispatchers.Default) {
+                for (char in service.characteristics) {
+                    when (char.uuid) {
+                        AUTH_CHAR_UUID -> {
+                            authCharacteristic = char
+                            gatt.setCharacteristicNotification(char, true)
+                            kotlinx.coroutines.delay(100)
+                            gatt.readCharacteristic(char)
+                        }
+                        HW_INFO_CHAR_UUID -> {
+                            kotlinx.coroutines.delay(100)
+                            gatt.readCharacteristic(char)
+                        }
+                        TERM_TX_CHAR_UUID -> txCharacteristic = char
+                        BATTERY_CHAR_UUID -> {
+                            gatt.setCharacteristicNotification(char, true)
+                            kotlinx.coroutines.delay(100)
+                            gatt.readCharacteristic(char)
+                        }
+                        TERM_RX_CHAR_UUID -> {
+                            kotlinx.coroutines.delay(50)
+                            gatt.setCharacteristicNotification(char, true)
+                        }
+                        SCREEN_BLE_CHAR_UUID -> {
+                            kotlinx.coroutines.delay(50)
+                            gatt.setCharacteristicNotification(char, true)
+                        }
                     }
-                    HW_INFO_CHAR_UUID -> gatt.readCharacteristic(char)
-                    TERM_TX_CHAR_UUID -> txCharacteristic = char
-                    BATTERY_CHAR_UUID -> {
-                        gatt.setCharacteristicNotification(char, true)
-                        gatt.readCharacteristic(char)
-                    }
-                    TERM_RX_CHAR_UUID -> gatt.setCharacteristicNotification(char, true)
-                    SCREEN_BLE_CHAR_UUID -> gatt.setCharacteristicNotification(char, true)
                 }
             }
         }
@@ -217,29 +231,27 @@ class BruceBLEManager(private val context: Context) {
     }
 
     private fun handleCharacteristicValue(gatt: BluetoothGatt, char: BluetoothGattCharacteristic, data: ByteArray) {
-        // FIX: Typenabgleich direkt über das native UUID-Objekt
         when (char.uuid) {
             AUTH_CHAR_UUID -> {
                 val statusString = String(data).trim()
-                Log.d(TAG, "AUTH RX: $statusString")
+                Log.d(TAG, "AUTH RX (Rohdaten): '$statusString'")
                 
                 scope.launch(Dispatchers.Main) {
-                    when (statusString) {
-                        "LOCKED", "AUTH_REQUIRED" -> {
-                            val autoPin = savedDevicePins[gatt.device.address]
-                            if (autoPin != null) {
-                                submitPin(autoPin)
-                            } else {
-                                _connectionState.value = ConnectionState.NeedsPin
-                            }
-                        }
-                        "SUCCESS", "UNLOCKED" -> {
-                            _connectionState.value = ConnectionState.Paired
-                            Log.d(TAG, "Erfolgreich autorisiert (Paired)!")
-                        }
-                        "WRONG_PIN", "FAILED" -> {
+                    // FIX: Tolerantes Matching fängt alle Zustände des Boards ab
+                    if (statusString == "SUCCESS" || statusString == "UNLOCKED" || statusString.contains("OK")) {
+                        _connectionState.value = ConnectionState.Paired
+                        Log.d(TAG, "Zustandsautomat erfolgreich auf PAIRED gesetzt!")
+                    } else if (statusString == "LOCKED" || statusString == "AUTH_REQUIRED") {
+                        val autoPin = savedDevicePins[gatt.device.address]
+                        if (autoPin != null) {
+                            _connectionState.value = ConnectionState.Authenticating
+                            writeCharacteristic(gatt, char, autoPin.toByteArray(), BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                        } else {
                             _connectionState.value = ConnectionState.NeedsPin
                         }
+                    } else if (statusString == "WRONG_PIN" || statusString == "FAILED") {
+                        _connectionState.value = ConnectionState.NeedsPin
+                        Log.e(TAG, "PIN-Verifizierung fehlgeschlagen.")
                     }
                 }
             }
@@ -340,7 +352,6 @@ class BruceBLEManager(private val context: Context) {
         }
     }
 
-    // (Die restlichen Steuerungsfunktionen bleiben identisch und thread-sicher)
     fun startExplicitScan() {
         _discoveredDevices.value = emptyList()
         isSearchingForNewDevices = true
@@ -398,12 +409,28 @@ class BruceBLEManager(private val context: Context) {
         _connectionState.value = ConnectionState.Disconnected
     }
 
+    // FIX: Das aktive Polling-Verfahren erzwingt nach 600ms den aktuellen Hardware-Status!
     fun submitPin(pin: String) {
         val gatt = activePeripheral ?: return
         val char = authCharacteristic ?: return
-        scope.launch(Dispatchers.Main) { _connectionState.value = ConnectionState.Authenticating }
-        // FIX: Einige Android Stacks verlangen WRITE_TYPE_DEFAULT für exaktes Handshaking
-        writeCharacteristic(gatt, char, pin.toByteArray(), BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+        
+        scope.launch(Dispatchers.Main) {
+            _connectionState.value = ConnectionState.Authenticating
+            Log.d(TAG, "PIN wird gesendet: $pin")
+            
+            writeCharacteristic(gatt, char, pin.toByteArray(), BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+            
+            try {
+                // Warte blockierungsfrei ab, ob eine Notification reinkommt
+                kotlinx.coroutines.delay(600)
+                if (_connectionState.value == ConnectionState.Authenticating) {
+                    Log.w(TAG, "Status hängt. Erzwinge manuelles Auslesen der AUTH-Charakteristik...")
+                    gatt.readCharacteristic(char)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Fehler im AUTH-Timeout: ${e.message}")
+            }
+        }
     }
 
     fun sendCommand(command: String) {
