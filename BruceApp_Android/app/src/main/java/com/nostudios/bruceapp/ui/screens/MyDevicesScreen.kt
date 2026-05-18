@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.dp
 import com.nostudios.bruceapp.data.model.BruceDevice
 import com.nostudios.bruceapp.ble.ConnectionState
 import com.nostudios.bruceapp.ui.components.DeviceTile
-import com.nostudios.bruceapp.ui.theme.*
+import com.nostudios.bruceapp.ui.theme.* // Importiert dein Doto-Font-Objekt automatisch
 import com.nostudios.bruceapp.util.chunkedInto
 import com.nostudios.bruceapp.viewmodel.BruceViewModel
 
@@ -34,7 +34,7 @@ fun MyDevicesScreen(
     val savedDevices by viewModel.savedDevices.collectAsState()
     val discoveredDevices by viewModel.bleManager.discoveredDevices.collectAsState()
     
-    // REAKTIVE FLOWS: Android StateFlows sauber an Compose binden
+    // REAKTIVE FLOWS: Android StateFlows sauber an das Jetpack Compose UI binden
     val connectionState by viewModel.bleManager.connectionState.collectAsState()
     val liveBatteryLevel by viewModel.bleManager.batteryLevel.collectAsState()
 
@@ -47,7 +47,7 @@ fun MyDevicesScreen(
                         "Dashboard",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
-                        fontFamily = Doto // Doto Font zugewiesen
+                        fontFamily = Doto // EXAKT DOTO SCHRIFTART
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -60,6 +60,130 @@ fun MyDevicesScreen(
                             Icons.Filled.Add,
                             contentDescription = "Add Device",
                             tint = White
+                        )
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+        ) {
+            // 1. NEUES GERÄT GEFUNDEN (PAIRING BANNER)
+            if (discoveredDevices.isNotEmpty()) {
+                val newDevice = discoveredDevices.first()
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .clickable {
+                            viewModel.bleManager.connectToDevice(newDevice)
+                            onAddDeviceClick()
+                        },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF262626))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Filled.Memory, contentDescription = null, tint = White)
+                            Text(
+                                "New Device: ${newDevice.name ?: "Bruce"}",
+                                color = White,
+                                fontFamily = Doto // EXAKT DOTO SCHRIFTART
+                            )
+                        }
+                        Text(
+                            "PAIR",
+                            fontWeight = FontWeight.Bold,
+                            color = White,
+                            fontFamily = Doto // EXAKT DOTO SCHRIFTART
+                        )
+                    }
+                }
+            }
+
+            // 2. LEERZUSTAND (KEINE GERÄTE)
+            if (savedDevices.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            "No Hardware",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = White,
+                            textAlign = TextAlign.Center,
+                            fontFamily = Doto // EXAKT DOTO SCHRIFTART
+                        )
+                        Text(
+                            "Turn on a Bruce device to pair it.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = WhiteOp70,
+                            textAlign = TextAlign.Center,
+                            fontFamily = Doto // EXAKT DOTO SCHRIFTART
+                        )
+                    }
+                }
+            } else {
+                // 3. GERÄTE-GRID (LIQUID GLASS TILES)
+                val chunked = savedDevices.chunkedInto(2)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(20.dp)
+                ) {
+                    for (row in chunked) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            for (device in row) {
+                                val isConnected = viewModel.bleManager.connectedPeripherals.containsKey(device.id)
+                                
+                                // Abgleich über die aktive Geräte-MAC-Adresse des Android-Managers
+                                val isActiveDevice = viewModel.bleManager.activePeripheral?.device?.address == device.id
+                                val batteryLevel = if (isConnected && isActiveDevice) liveBatteryLevel else null
+
+                                DeviceTile(
+                                    device = device,
+                                    isConnected = isConnected,
+                                    batteryLevel = batteryLevel,
+                                    onClick = {
+                                        // 1. Aktiviert das gekoppelte Gerät im Android Bluetooth-Stack
+                                        viewModel.bleManager.selectActiveDevice(device.id)
+                                        
+                                        // 2. Löst die Jetpack-Navigation aus, um den Detailscreen zu öffnen
+                                        onDeviceClick(device)
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            if (row.size == 1) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}                            tint = White
                         )
                     }
                 }
