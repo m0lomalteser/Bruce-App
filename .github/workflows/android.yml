@@ -1,0 +1,36 @@
+name: Android Build & Release
+
+on:
+  push:
+    paths:
+      - 'BruceApp_Android/**'
+  workflow_dispatch: # Erlaubt manuelles Starten über GitHub
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '26'
+          distribution: 'zulu'
+          cache: 'gradle'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x "BruceApp_Android/gradlew"
+
+      - name: Build Release APK
+        run: |
+          cd "BruceApp_Android"
+          ./gradlew assembleRelease
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release-apk
+          path: BruceApp_Android/app/build/outputs/apk/release/*.apk
