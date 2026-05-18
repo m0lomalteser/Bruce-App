@@ -23,7 +23,6 @@ import com.nostudios.bruceapp.ui.components.DeviceTile
 import com.nostudios.bruceapp.ui.theme.*
 import com.nostudios.bruceapp.util.chunkedInto
 import com.nostudios.bruceapp.viewmodel.BruceViewModel
-import kotlinx.coroutines.flow.collectLatest
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,7 +33,10 @@ fun MyDevicesScreen(
 ) {
     val savedDevices by viewModel.savedDevices.collectAsState()
     val discoveredDevices by viewModel.bleManager.discoveredDevices.collectAsState()
+    
+    // REAKTIVE FLOWS: Android StateFlows sauber an Compose binden
     val connectionState by viewModel.bleManager.connectionState.collectAsState()
+    val liveBatteryLevel by viewModel.bleManager.batteryLevel.collectAsState()
 
     Scaffold(
         containerColor = Background,
@@ -44,7 +46,8 @@ fun MyDevicesScreen(
                     Text(
                         "Dashboard",
                         style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = Doto // Doto Font zugewiesen
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -69,6 +72,7 @@ fun MyDevicesScreen(
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
         ) {
+            // 1. NEUES GERÄT GEFUNDEN (PAIRING BANNER)
             if (discoveredDevices.isNotEmpty()) {
                 val newDevice = discoveredDevices.first()
                 Card(
@@ -96,18 +100,21 @@ fun MyDevicesScreen(
                             Icon(Icons.Filled.Memory, contentDescription = null, tint = White)
                             Text(
                                 "New Device: ${newDevice.name ?: "Bruce"}",
-                                color = White
+                                color = White,
+                                fontFamily = Doto
                             )
                         }
                         Text(
                             "PAIR",
                             fontWeight = FontWeight.Bold,
-                            color = White
+                            color = White,
+                            fontFamily = Doto
                         )
                     }
                 }
             }
 
+            // 2. LEERZUSTAND (KEINE GERÄTE)
             if (savedDevices.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -120,17 +127,20 @@ fun MyDevicesScreen(
                             "No Hardware",
                             style = MaterialTheme.typography.bodyMedium,
                             color = White,
-                            textAlign = TextAlign.Center
+                            textAlign = TextAlign.Center,
+                            fontFamily = Doto
                         )
                         Text(
                             "Turn on a Bruce device to pair it.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = WhiteOp70,
-                            textAlign = TextAlign.Center
+                            textAlign = TextAlign.Center,
+                            fontFamily = Doto
                         )
                     }
                 }
             } else {
+                // 3. GERÄTE-GRID (LIQUID GLASS TILES)
                 val chunked = savedDevices.chunkedInto(2)
                 Column(
                     modifier = Modifier
@@ -145,15 +155,22 @@ fun MyDevicesScreen(
                         ) {
                             for (device in row) {
                                 val isConnected = viewModel.bleManager.connectedPeripherals.containsKey(device.id)
-                                val batteryLevel = if (isConnected &&
-                                    viewModel.bleManager.activePeripheral?.device?.address == device.id
-                                ) viewModel.bleManager.batteryLevel.value else null
+                                
+                                // FIX: Prüft über die aktive MAC-Adresse, ob das Gerät aktuell ausgewählt ist
+                                val isActiveDevice = viewModel.bleManager.activePeripheral?.device?.address == device.id
+                                val batteryLevel = if (isConnected && isActiveDevice) liveBatteryLevel else null
 
                                 DeviceTile(
                                     device = device,
                                     isConnected = isConnected,
                                     batteryLevel = batteryLevel,
-                                    onClick = { onDeviceClick(device) },
+                                    onClick = {
+                                        // FIX: Schaltet die Hardware im Android-Manager aktiv um und stößt die Service-Discovery an
+                                        viewModel.bleManager.selectActiveDevice(device.id)
+                                        
+                                        // Triggert das Jetpack Navigation Event zum Detailscreen
+                                        onDeviceClick(device)
+                                    },
                                     modifier = Modifier.weight(1f)
                                 )
                             }
