@@ -17,6 +17,7 @@ import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.os.Build
 import android.os.ParcelUuid
+import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +36,8 @@ data class BruceFileItem(
 enum class ConnectionState {
     Disconnected, Scanning, Connecting, NeedsPin, Authenticating, Paired, Failed
 }
+
+private const val TAG = "BruceBLE"
 
 private val BRUCE_SERVICE_UUID: UUID = UUID.fromString("B1234567-89AB-CDEF-0123-456789ABCDEF")
 private val AUTH_CHAR_UUID: UUID = UUID.fromString("A1234567-89AB-CDEF-0123-456789ABCDEF")
@@ -107,7 +110,8 @@ class BruceBLEManager(private val context: Context) {
             try {
                 val result = gatt.writeCharacteristic(char, data, writeType)
                 if (result is Int) result == 0 else result as? Boolean ?: false
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.e(TAG, "Fehler beim Schreiben der Charakteristik (API 33+): ${e.message}")
                 false
             }
         } else {
@@ -118,7 +122,8 @@ class BruceBLEManager(private val context: Context) {
                 char.writeType = writeType
                 @Suppress("DEPRECATION")
                 gatt.writeCharacteristic(char)
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.e(TAG, "Fehler beim Schreiben der Charakteristik (Legacy): ${e.message}")
                 false
             }
         }
@@ -142,29 +147,46 @@ class BruceBLEManager(private val context: Context) {
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
+                    Log.d(TAG, "Verbunden mit ${gatt.device.address}. Fordere MTU 512 an...")
                     _connectedPeripherals[gatt.device.address] = gatt
                     if (activePeripheral == null) activePeripheral = gatt
-                    gatt.discoverServices()
+                    
+                    // FIX: Fordere die 512er MTU an, bevor Services gescannt werden
+                    gatt.requestMtu(512)
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
+                    Log.d(TAG, "Verbindung getrennt: ${gatt.device.address}")
                     _connectedPeripherals.remove(gatt.device.address)
                     if (gatt.device.address == activePeripheral?.device?.address) {
-                        _connectionState.value = ConnectionState.Disconnected
-                        _batteryLevel.value = null
-                        _rawScreenData.value = byteArrayOf()
-                        _remoteFiles.value = emptyList()
-                        activePeripheral = null
+                        scope.launch(Dispatchers.Main) {
+                            _connectionState.value = ConnectionState.Disconnected
+                            _batteryLevel.value = null
+                            _rawScreenData.value = byteArrayOf()
+                            _remoteFiles.value = emptyList()
+                            activePeripheral = null
+                        }
                     }
                     gatt.close()
                 }
             }
         }
 
+        override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                Log.d(TAG, "MTU erfolgreich auf $mtu Bytes geändert. Starte Service-Discovery...")
+                gatt.discoverServices()
+            } else {
+                Log.e(TAG, "MTU-Aushandlung fehlgeschlagen. Starte trotzdem Service-Discovery...")
+                gatt.discoverServices()
+            }
+        }
+
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-            val service = gatt.getService(java.util.UUID.fromString(BRUCE_SERVICE_UUID.toString()))
-                ?: return
+            Log.d(TAG, "Services entdeckt für: ${gatt.device.address}")
+            val service = gatt.getService(BRUCE_SERVICE_UUID) ?: return
             for (char in service.characteristics) {
-                when (char.uuid.toString().uppercase()) {
+                val uuidStr = char.uuid.toString().uppercase()
+                when (uuidStr) {
                     AUTH_CHAR_UUID.toString().uppercase() -> {
                         authCharacteristic = char
                         gatt.setCharacteristicNotification(char, true)
@@ -182,40 +204,22 @@ class BruceBLEManager(private val context: Context) {
             }
         }
 
-        override fun onCharacteristicRead(
-            gatt: BluetoothGatt,
-            characteristic: BluetoothGattCharacteristic,
-            value: ByteArray,
-            status: Int
-        ) {
+        override fun onCharacteristicRead(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray, status: Int) {
             handleCharacteristicValue(gatt, characteristic, value)
         }
 
         @Suppress("DEPRECATION")
-        @Deprecated("Use new callback for API 33+", ReplaceWith("onCharacteristicRead(gatt, characteristic, characteristic.value, status)"))
-        override fun onCharacteristicRead(
-            gatt: BluetoothGatt,
-            characteristic: BluetoothGattCharacteristic,
-            status: Int
-        ) {
+        override fun onCharacteristicRead(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
             val value = characteristic.value ?: return
             handleCharacteristicValue(gatt, characteristic, value)
         }
 
-        override fun onCharacteristicChanged(
-            gatt: BluetoothGatt,
-            characteristic: BluetoothGattCharacteristic,
-            value: ByteArray
-        ) {
+        override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray) {
             handleCharacteristicValue(gatt, characteristic, value)
         }
 
         @Suppress("DEPRECATION")
-        @Deprecated("Use new callback for API 33+", ReplaceWith("onCharacteristicChanged(gatt, characteristic, characteristic.value)"))
-        override fun onCharacteristicChanged(
-            gatt: BluetoothGatt,
-            characteristic: BluetoothGattCharacteristic
-        ) {
+        override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
             val value = characteristic.value ?: return
             handleCharacteristicValue(gatt, characteristic, value)
         }
@@ -226,9 +230,12 @@ class BruceBLEManager(private val context: Context) {
         when {
             uuid == AUTH_CHAR_UUID.toString().uppercase() -> {
                 val statusString = String(data).trim()
-                scope.launch {
-                    when {
-                        statusString == "LOCKED" || statusString == "AUTH_REQUIRED" -> {
+                Log.d(TAG, "Authentifizierungs-Status empfangen: $statusString")
+                
+                // FIX: Garantiert auf dem Main-Thread ausführen gegen den Freeze-Zustand
+                scope.launch(Dispatchers.Main) {
+                    when (statusString) {
+                        "LOCKED", "AUTH_REQUIRED" -> {
                             val autoPin = savedDevicePins[gatt.device.address]
                             if (autoPin != null) {
                                 submitPin(autoPin)
@@ -236,10 +243,11 @@ class BruceBLEManager(private val context: Context) {
                                 _connectionState.value = ConnectionState.NeedsPin
                             }
                         }
-                        statusString == "SUCCESS" || statusString == "UNLOCKED" -> {
+                        "SUCCESS", "UNLOCKED" -> {
                             _connectionState.value = ConnectionState.Paired
+                            Log.d(TAG, "Erfolgreich gepaart und verifiziert!")
                         }
-                        statusString == "WRONG_PIN" || statusString == "FAILED" -> {
+                        "WRONG_PIN", "FAILED" -> {
                             _connectionState.value = ConnectionState.NeedsPin
                         }
                     }
@@ -262,22 +270,29 @@ class BruceBLEManager(private val context: Context) {
                                 else if (bytesSize >= 1048576) String.format("%.1f MB", bytesSize / 1048576.0)
                                 else if (bytesSize >= 1024) "${bytesSize / 1024} KB"
                                 else "$bytesSize B"
-                                val current = _remoteFiles.value.toMutableList()
-                                if (current.none { it.name == name }) {
-                                    current.add(BruceFileItem(name, isDir, readableSize))
-                                    _remoteFiles.value = current
+                                
+                                scope.launch(Dispatchers.Main) {
+                                    val current = _remoteFiles.value.toMutableList()
+                                    if (current.none { it.name == name }) {
+                                        current.add(BruceFileItem(name, isDir, readableSize))
+                                        _remoteFiles.value = current
+                                    }
                                 }
                             }
                         }
-                        cleanLine == "FS_LIST_DONE" -> _isFileFolderLoading.value = false
+                        cleanLine == "FS_LIST_DONE" -> {
+                            scope.launch(Dispatchers.Main) { _isFileFolderLoading.value = false }
+                        }
                         cleanLine.startsWith("FS_DOWNLOAD_INIT:") -> {
                             val payload = cleanLine.removePrefix("FS_DOWNLOAD_INIT:")
                             val parts = payload.split("|")
                             if (parts.isNotEmpty()) {
-                                _downloadingFileName.value = parts[0]
-                                downloadDataBuffer.clear()
-                                _lastDownloadedFilePath.value = null
-                                _isDownloading.value = true
+                                scope.launch(Dispatchers.Main) {
+                                    _downloadingFileName.value = parts[0]
+                                    downloadDataBuffer.clear()
+                                    _lastDownloadedFilePath.value = null
+                                    _isDownloading.value = true
+                                }
                             }
                         }
                         cleanLine.startsWith("FS_DOWNLOAD_CHUNK:") -> {
@@ -290,37 +305,47 @@ class BruceBLEManager(private val context: Context) {
                         cleanLine == "FS_DOWNLOAD_END" -> {
                             val fileName = _downloadingFileName.value
                             val finalData = downloadDataBuffer.toByteArray()
-                            scope.launch {
-                                val file = File(context.cacheDir, fileName)
-                                file.writeBytes(finalData)
-                                _lastDownloadedFilePath.value = file.absolutePath
-                                _isDownloading.value = false
+                            scope.launch(Dispatchers.Main) {
+                                try {
+                                    val file = File(context.cacheDir, fileName)
+                                    file.writeBytes(finalData)
+                                    _lastDownloadedFilePath.value = file.absolutePath
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Fehler beim Speichern der Download-Datei: ${e.message}")
+                                } finally {
+                                    _isDownloading.value = false
+                                }
                             }
                         }
                         cleanLine.isNotEmpty() -> {
-                            val current = _terminalOutput.value.toMutableList()
-                            current.add(cleanLine)
-                            _terminalOutput.value = current
+                            scope.launch(Dispatchers.Main) {
+                                val current = _terminalOutput.value.toMutableList()
+                                current.add(cleanLine)
+                                _terminalOutput.value = current
+                            }
                         }
                     }
                 }
             }
             uuid == SCREEN_BLE_CHAR_UUID.toString().uppercase() -> {
-                val current = _rawScreenData.value.toMutableList()
-                current.addAll(data.toList())
-                if (current.size > 60000) {
-                    val trimmed = current.takeLast(10000)
-                    _rawScreenData.value = trimmed.toByteArray()
-                } else {
-                    _rawScreenData.value = current.toByteArray()
+                scope.launch(Dispatchers.Main) {
+                    val current = _rawScreenData.value.toMutableList()
+                    current.addAll(data.toList())
+                    if (current.size > 60000) {
+                        _rawScreenData.value = current.takeLast(10000).toByteArray()
+                    } else {
+                        _rawScreenData.value = current.toByteArray()
+                    }
                 }
             }
             uuid == HW_INFO_CHAR_UUID.toString().uppercase() -> {
                 val name = String(data).trim()
-                _hardwareName.value = name
+                scope.launch(Dispatchers.Main) { _hardwareName.value = name }
             }
             uuid == BATTERY_CHAR_UUID.toString().uppercase() -> {
-                if (data.isNotEmpty()) _batteryLevel.value = data[0].toInt() and 0xFF
+                if (data.isNotEmpty()) {
+                    scope.launch(Dispatchers.Main) { _batteryLevel.value = data[0].toInt() and 0xFF }
+                }
             }
         }
     }
@@ -365,9 +390,11 @@ class BruceBLEManager(private val context: Context) {
     }
 
     fun selectActiveDevice(address: String) {
-        val gatt = _connectedPeripherals[address] ?: return
-        activePeripheral = gatt
-        if (!gatt.discoverServices()) {
+        val gatt = _connectedPeripherals[address]
+        if (gatt != null) {
+            activePeripheral = gatt
+            gatt.discoverServices()
+        } else {
             val device = bluetoothAdapter.getRemoteDevice(address)
             val newGatt = device.connectGatt(context, false, gattCallback)
             _connectedPeripherals[address] = newGatt
@@ -379,6 +406,7 @@ class BruceBLEManager(private val context: Context) {
         activePeripheral?.disconnect()
         activePeripheral?.close()
         activePeripheral = null
+        _connectionState.value = ConnectionState.Disconnected
     }
 
     fun submitPin(pin: String) {
@@ -434,5 +462,6 @@ class BruceBLEManager(private val context: Context) {
         }
         _connectedPeripherals.clear()
         activePeripheral = null
+        _connectionState.value = ConnectionState.Disconnected
     }
 }
