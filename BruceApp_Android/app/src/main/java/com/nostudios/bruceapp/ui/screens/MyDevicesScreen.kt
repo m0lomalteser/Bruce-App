@@ -20,10 +20,7 @@ import androidx.compose.ui.unit.dp
 import com.nostudios.bruceapp.data.model.BruceDevice
 import com.nostudios.bruceapp.ble.ConnectionState
 import com.nostudios.bruceapp.ui.components.DeviceTile
-import com.nostudios.bruceapp.ui.theme.Background
-import com.nostudios.bruceapp.ui.theme.White
-import com.nostudios.bruceapp.ui.theme.WhiteOp70
-import com.nostudios.bruceapp.ui.theme.Doto
+import com.nostudios.bruceapp.ui.theme.*
 import com.nostudios.bruceapp.util.chunkedInto
 import com.nostudios.bruceapp.viewmodel.BruceViewModel
 
@@ -49,7 +46,7 @@ fun MyDevicesScreen(
                         "Dashboard",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
-                        fontFamily = Doto
+                        fontFamily = DotoFontFamily // Nutzt jetzt deine echte DotoFontFamily!
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -102,14 +99,14 @@ fun MyDevicesScreen(
                             Text(
                                 "New Device: ${newDevice.name ?: "Bruce"}",
                                 color = White,
-                                fontFamily = Doto
+                                fontFamily = DotoFontFamily // Nutzt jetzt deine echte DotoFontFamily!
                             )
                         }
                         Text(
                             "PAIR",
                             fontWeight = FontWeight.Bold,
                             color = White,
-                            fontFamily = Doto
+                            fontFamily = DotoFontFamily // Nutzt jetzt deine echte DotoFontFamily!
                         )
                     }
                 }
@@ -128,14 +125,14 @@ fun MyDevicesScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             color = White,
                             textAlign = TextAlign.Center,
-                            fontFamily = Doto
+                            fontFamily = DotoFontFamily // Nutzt jetzt deine echte DotoFontFamily!
                         )
                         Text(
                             "Turn on a Bruce device to pair it.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = WhiteOp70,
                             textAlign = TextAlign.Center,
-                            fontFamily = Doto
+                            fontFamily = DotoFontFamily // Nutzt jetzt deine echte DotoFontFamily!
                         )
                     }
                 }
@@ -154,7 +151,6 @@ fun MyDevicesScreen(
                         ) {
                             for (device in row) {
                                 val isConnected = viewModel.bleManager.connectedPeripherals.containsKey(device.id)
-                                
                                 val isActiveDevice = viewModel.bleManager.activePeripheral?.device?.address == device.id
                                 val batteryLevel = if (isConnected && isActiveDevice) liveBatteryLevel else null
 
